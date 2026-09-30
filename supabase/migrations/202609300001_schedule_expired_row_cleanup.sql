@@ -53,3 +53,13 @@ select cron.schedule(
   '0 20 * * *',
   $$select public.cleanup_expired_rows()$$
 );
+
+-- pg_cron logs every run to cron.job_run_details and never prunes it, which
+-- is the same unbounded growth the job above exists to stop — one row per run
+-- per job, forever. Keep a week of history (enough to debug a failing job),
+-- trimmed weekly on Sundays at 20:00 UTC.
+select cron.schedule(
+  'prune-cron-history',
+  '0 20 * * 0',
+  $$delete from cron.job_run_details where end_time < now() - interval '7 days'$$
+);

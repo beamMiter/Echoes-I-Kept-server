@@ -1,0 +1,41 @@
+# Pings the deployed API on a schedule so it (and the Supabase project behind
+# it, via /health/db) never sits idle long enough to go cold or get paused.
+#
+# Setup: add a repository *variable* (Settings -> Secrets and variables ->
+# Actions -> Variables) named API_BASE_URL, e.g. https://your-api.vercel.app
+# with no trailing slash.
+#
+# Notes: GitHub runs scheduled workflows best-effort (a run can start a few
+# minutes late) and disables them after 60 days without repository activity —
+# re-enable under the Actions tab if that ever happens.
+name: Keep API alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /health/db
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: |
+          if [ -z "$API_BASE_URL" ]; then
+            echo "::error::Repository variable API_BASE_URL is not set"
+            exit 1
+          fi
+          # --retry covers a cold start; --fail turns 4xx/5xx into a red run.
+          curl --fail --silent --show-error \
+            --retry 3 --retry-delay 10 --retry-all-errors \
+            --max-time 30 \
+            "${API_BASE_URL%/}/health/db"
